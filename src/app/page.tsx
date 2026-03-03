@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { FormEvent, useEffect, useState } from "react";
 import { LEAD_PRIORITIES, LEAD_SOURCES, LEAD_STATUSES } from "@/lib/constants";
 import { Lead, LeadPriority, LeadSource, LeadStatus } from "@/lib/types";
 
@@ -15,6 +16,13 @@ type LeadForm = {
   value: number;
   notes: string;
   tags: string;
+  nextFollowUpAt: string;
+};
+
+type MetaPayload = {
+  leads: Lead[];
+  pipeline: { status: string; count: number }[];
+  followUps: { overdue: Lead[]; dueToday: Lead[] };
 };
 
 const EMPTY_FORM: LeadForm = {
@@ -28,10 +36,16 @@ const EMPTY_FORM: LeadForm = {
   value: 0,
   notes: "",
   tags: "",
+  nextFollowUpAt: "",
 };
 
 export default function HomePage() {
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [pipeline, setPipeline] = useState<{ status: string; count: number }[]>([]);
+  const [followUps, setFollowUps] = useState<{ overdue: Lead[]; dueToday: Lead[] }>({
+    overdue: [],
+    dueToday: [],
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,13 +54,11 @@ export default function HomePage() {
   const [priorityFilter, setPriorityFilter] = useState<string>("");
   const [form, setForm] = useState<LeadForm>(EMPTY_FORM);
 
-  const filtered = useMemo(() => leads, [leads]);
-
-  async function loadLeads() {
+  async function loadDashboard() {
     setLoading(true);
     setError(null);
 
-    const params = new URLSearchParams();
+    const params = new URLSearchParams({ withMeta: "1" });
     if (query) params.set("q", query);
     if (statusFilter) params.set("status", statusFilter);
     if (priorityFilter) params.set("priority", priorityFilter);
@@ -59,12 +71,14 @@ export default function HomePage() {
       return;
     }
 
-    const data = (await res.json()) as Lead[];
-    setLeads(data);
+    const data = (await res.json()) as MetaPayload;
+    setLeads(data.leads || []);
+    setPipeline(data.pipeline || []);
+    setFollowUps(data.followUps || { overdue: [], dueToday: [] });
   }
 
   useEffect(() => {
-    loadLeads();
+    loadDashboard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -79,7 +93,7 @@ export default function HomePage() {
         .split(",")
         .map((x) => x.trim())
         .filter(Boolean),
-      nextFollowUpAt: null,
+      nextFollowUpAt: form.nextFollowUpAt ? new Date(form.nextFollowUpAt).toISOString() : null,
       lastTouchAt: null,
     };
 
@@ -97,7 +111,7 @@ export default function HomePage() {
     }
 
     setForm(EMPTY_FORM);
-    await loadLeads();
+    await loadDashboard();
   }
 
   async function deleteLead(id: string) {
@@ -106,7 +120,7 @@ export default function HomePage() {
       setError("Failed to delete lead");
       return;
     }
-    await loadLeads();
+    await loadDashboard();
   }
 
   async function updateStatus(id: string, status: string) {
@@ -119,7 +133,27 @@ export default function HomePage() {
       setError("Failed to update status");
       return;
     }
-    await loadLeads();
+    await loadDashboard();
+  }
+
+  async function followUpAction(leadId: string, action: "done" | "snooze" | "reschedule") {
+    const body: { leadId: string; action: string; until?: string | null } = { leadId, action };
+    if (action === "reschedule") {
+      body.until = new Date(Date.now() + 1000 * 60 * 60 * 24 * 2).toISOString();
+    }
+
+    const res = await fetch("/api/follow-ups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      setError("Failed follow-up action");
+      return;
+    }
+
+    await loadDashboard();
   }
 
   async function logout() {
@@ -132,7 +166,7 @@ export default function HomePage() {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-semibold text-slate-900">CRM v1</h1>
-          <p className="text-sm text-slate-600">Leads baseline: CRUD, search, filters, auth gate.</p>
+          <p className="text-sm text-slate-600">Pipeline, follow-ups, timeline-ready CRM.</p>
         </div>
         <button
           onClick={logout}
@@ -145,6 +179,32 @@ export default function HomePage() {
       {error ? (
         <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">{error}</div>
       ) : null}
+
+      <section className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:grid-cols-3">
+        <BucketCard
+          title="Overdue"
+          items={followUps.overdue}
+          onAction={followUpAction}
+          accent="rose"
+        />
+        <BucketCard
+          title="Due today"
+          items={followUps.dueToday}
+          onAction={followUpAction}
+          accent="amber"
+        />
+        <div className="rounded-xl border border-slate-200 p-3">
+          <h3 className="font-semibold text-slate-800">Pipeline board</h3>
+          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+            {pipeline.map((p) => (
+              <div key={p.status} className="rounded-lg bg-slate-50 px-3 py-2">
+                <div className="text-slate-500">{p.status}</div>
+                <div className="text-lg font-semibold text-slate-900">{p.count}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
       <section className="grid gap-6 lg:grid-cols-[360px_1fr]">
         <form
@@ -194,6 +254,12 @@ export default function HomePage() {
           </div>
 
           <Input label="Tags (comma-separated)" value={form.tags} onChange={(v) => setForm((f) => ({ ...f, tags: v }))} />
+          <Input
+            label="Next follow-up"
+            type="datetime-local"
+            value={form.nextFollowUpAt}
+            onChange={(v) => setForm((f) => ({ ...f, nextFollowUpAt: v }))}
+          />
 
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-slate-700">Notes</span>
@@ -231,7 +297,7 @@ export default function HomePage() {
               onChange={setPriorityFilter}
             />
             <button
-              onClick={loadLeads}
+              onClick={loadDashboard}
               className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
             >
               Apply
@@ -257,14 +323,14 @@ export default function HomePage() {
                       Loading leads...
                     </td>
                   </tr>
-                ) : filtered.length === 0 ? (
+                ) : leads.length === 0 ? (
                   <tr>
                     <td className="px-2 py-4 text-slate-500" colSpan={6}>
                       No leads found.
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((lead) => (
+                  leads.map((lead) => (
                     <tr key={lead._id} className="border-b border-slate-100">
                       <td className="px-2 py-2">
                         <div className="font-medium text-slate-900">{lead.company}</div>
@@ -287,12 +353,17 @@ export default function HomePage() {
                       <td className="px-2 py-2">{lead.priority}</td>
                       <td className="px-2 py-2">${lead.value.toLocaleString()}</td>
                       <td className="px-2 py-2">
-                        <button
-                          className="text-rose-600 hover:text-rose-800"
-                          onClick={() => deleteLead(lead._id)}
-                        >
-                          Delete
-                        </button>
+                        <div className="flex gap-3">
+                          <Link href={`/leads/${lead._id}`} className="text-indigo-600 hover:text-indigo-800">
+                            Timeline
+                          </Link>
+                          <button
+                            className="text-rose-600 hover:text-rose-800"
+                            onClick={() => deleteLead(lead._id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -303,6 +374,48 @@ export default function HomePage() {
         </div>
       </section>
     </main>
+  );
+}
+
+function BucketCard({
+  title,
+  items,
+  onAction,
+  accent,
+}: {
+  title: string;
+  items: Lead[];
+  onAction: (leadId: string, action: "done" | "snooze" | "reschedule") => void;
+  accent: "rose" | "amber";
+}) {
+  const border = accent === "rose" ? "border-rose-200 bg-rose-50/50" : "border-amber-200 bg-amber-50/50";
+
+  return (
+    <div className={`rounded-xl border p-3 ${border}`}>
+      <h3 className="font-semibold text-slate-800">
+        {title} <span className="text-slate-500">({items.length})</span>
+      </h3>
+      <div className="mt-2 space-y-2">
+        {items.slice(0, 4).map((lead) => (
+          <div key={lead._id} className="rounded-lg border border-slate-200 bg-white p-2">
+            <div className="font-medium text-slate-900">{lead.company}</div>
+            <div className="text-xs text-slate-500">{lead.contactName}</div>
+            <div className="mt-2 flex gap-2 text-xs">
+              <button className="text-emerald-700" onClick={() => onAction(lead._id, "done")}>
+                Done
+              </button>
+              <button className="text-slate-700" onClick={() => onAction(lead._id, "snooze")}>
+                Snooze
+              </button>
+              <button className="text-indigo-700" onClick={() => onAction(lead._id, "reschedule")}>
+                Reschedule
+              </button>
+            </div>
+          </div>
+        ))}
+        {items.length === 0 ? <p className="text-sm text-slate-500">No items.</p> : null}
+      </div>
+    </div>
   );
 }
 

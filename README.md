@@ -2,11 +2,13 @@
 
 Modern lightweight internal CRM built with Next.js 16, TypeScript, Tailwind, and MongoDB.
 
-## v0 scope (deployed first)
+## Current feature set
 - Basic auth gate (password + signed HTTP-only JWT cookie)
 - Leads CRUD
-- Lead list with search + status/priority filters
-- MongoDB-backed schema + validation
+- Search/filter by company/contact, status, priority
+- Pipeline board counts by status
+- Activity timeline per lead with quick add
+- Follow-up center (overdue + due-today + done/snooze/reschedule)
 
 ## Tech
 - Next.js App Router + TypeScript
