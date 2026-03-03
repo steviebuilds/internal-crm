@@ -32,10 +32,14 @@ export async function GET(req: Request) {
       }),
     );
   } catch (error) {
-    return Response.json(
-      { error: "Failed to load leads", details: getErrorMessage(error) },
-      { status: 500 },
-    );
+    const details = getErrorMessage(error);
+    return ok({
+      leads: [],
+      pipeline: [],
+      followUps: { overdue: [], dueToday: [] },
+      warning: "Mongo unavailable, serving empty CRM dataset.",
+      details,
+    });
   }
 }
 
