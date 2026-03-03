@@ -1,56 +1,71 @@
 # CRM v1 (internal)
 
-Modern lightweight internal CRM built with Next.js 16, TypeScript, Tailwind, and MongoDB.
+Company-first outreach CRM built with Next.js 16, TypeScript, Tailwind, and MongoDB.
 
 ## Current feature set
 - Basic auth gate (password + signed HTTP-only JWT cookie)
-- Leads CRUD
-- Search/filter by company/contact, status, priority
-- Pipeline board counts by status
-- Activity timeline per lead with quick add
+- Company CRUD with structured intelligence fields
+- First-class People model linked to companies
+- Company timeline activities
+- Search + filters + server-side pagination
 - Follow-up center (overdue + due-today + done/snooze/reschedule)
 
-## Tech
-- Next.js App Router + TypeScript
-- MongoDB (Mongoose)
-- Zod validation
-- Tailwind CSS
+## Core data model
+### Company
+- `name`, `website`, `industry`
+- `status`, `priority`, `source`
+- `tags[]`, `notes`
+- socials: `instagramHandle`, `instagramUrl`, `facebookUrl`, `linkedinUrl`, `xUrl`, `tiktokUrl`, `youtubeUrl`
+- `addresses[]`, `phones[]`, `emails[]`
+- `assignedTo`
+- `lastTouchAt`, `nextFollowUpAt`, timestamps
 
-## Setup
-1. Copy env file:
-   ```bash
-   cp .env.example .env.local
-   ```
-2. Fill env vars.
-3. Install and run:
-   ```bash
-   npm install
-   npm run dev
-   ```
-4. Open `http://localhost:3000`
+### Person
+- `companyId`
+- `fullName`, `role`
+- `phones[]`, `emails[]`
+- socials: `linkedinUrl`, `instagramHandle`, `instagramUrl`
+- confidence metadata: `confidenceScore`, `confidenceSource`, `confidenceNotes`
+- `notes`, `isPrimaryContact`, timestamps
 
-## Environment variables
-- `MONGODB_URI` (required)
-- `MONGODB_DB` (optional, default `crm_v1`)
-- `AUTH_SECRET` (required)
-- `CRM_PASSWORD_HASH` (recommended)
-- `CRM_PASSWORD` (fallback for quick local use)
+## API
+- `GET/POST /api/companies`
+- `GET/PATCH/DELETE /api/companies/:id`
+- `GET/POST /api/companies/:id/people`
+- `GET/POST /api/companies/:id/activities`
+- `GET/POST /api/people`
+- `GET/PATCH/DELETE /api/people/:id`
+- `GET/POST /api/follow-ups`
 
-## Seed data
+## Pagination contract
+For list endpoints (`/api/companies`, `/api/people`, `/api/companies/:id/people`):
+- query params: `page`, `pageSize`, optional `q`, filters
+- response metadata: `total`, `page`, `pageSize`, `totalPages`
+
+Search is DB-level first, then paginated.
+
+## Migration (clean rename from leads → companies)
+Run once in production after deploy:
 ```bash
-npm run seed
+npm run migrate:leads-to-companies -- --threshold=0.85
 ```
 
-## Security notes
-- Use `CRM_PASSWORD_HASH` in production (bcrypt)
-- Keep `AUTH_SECRET` long/random
-- Cookie is HTTP-only and secure in production
+What it does:
+1. Renames Mongo collection `leads` → `companies` (if needed)
+2. Migrates `activities.leadId` → `activities.companyId`
+3. Normalizes company shape fields
+4. Backfills primary people with confidence-based rules
+5. Uncertain matches are preserved in company notes as `[unverified-contact]`
 
-## API overview
-- `POST /api/auth/login`
-- `POST /api/auth/logout`
-- `GET /api/auth/me`
-- `GET/POST /api/leads`
-- `GET/PATCH/DELETE /api/leads/:id`
-- `GET/POST /api/leads/:id/activities`
-- `GET/POST /api/follow-ups`
+## Rollback notes
+- Snapshot DB before migration.
+- If rollback needed: restore snapshot and redeploy previous app revision.
+- Migration is additive/transformative but not designed for automatic reverse transform.
+
+## Setup
+```bash
+cp .env.example .env.local
+npm install
+npm run dev
+```
+Open `http://localhost:3000`.

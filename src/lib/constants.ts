@@ -1,4 +1,4 @@
-export const LEAD_STATUSES = [
+export const COMPANY_STATUSES = [
   "New",
   "Contacted",
   "Demo Sent",
@@ -7,9 +7,9 @@ export const LEAD_STATUSES = [
   "Lost",
 ] as const;
 
-export const LEAD_PRIORITIES = ["Low", "Medium", "High"] as const;
+export const COMPANY_PRIORITIES = ["Low", "Medium", "High"] as const;
 
-export const LEAD_SOURCES = [
+export const COMPANY_SOURCES = [
   "Website",
   "Referral",
   "Cold Outreach",
@@ -18,11 +18,6 @@ export const LEAD_SOURCES = [
   "Other",
 ] as const;
 
-export const ACTIVITY_TYPES = [
-  "call",
-  "email",
-  "note",
-  "status-change",
-] as const;
+export const ACTIVITY_TYPES = ["call", "email", "note", "status-change"] as const;
 
 export const AUTH_COOKIE_NAME = "crm_session";

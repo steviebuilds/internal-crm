@@ -1,47 +1,69 @@
 import { connectDb } from "@/lib/db";
-import { LeadModel } from "@/lib/models/Lead";
+import { CompanyModel } from "@/lib/models/Company";
+import { PersonModel } from "@/lib/models/Person";
 
 async function run() {
   await connectDb();
 
-  const existing = await LeadModel.countDocuments();
+  const existing = await CompanyModel.countDocuments();
   if (existing > 0) {
-    console.log(`Seed skipped: ${existing} leads already exist.`);
+    console.log(`Seed skipped: ${existing} companies already exist.`);
     process.exit(0);
   }
 
-  await LeadModel.insertMany([
+  const companies = await CompanyModel.insertMany([
     {
-      company: "Northstar Fitness",
-      contactName: "Jenna Cole",
-      email: "jenna@northstarfit.com",
-      phone: "+1 555-0101",
+      name: "Northstar Fitness",
+      website: "https://northstarfit.com",
+      industry: "Fitness",
       source: "Referral",
       status: "Contacted",
       priority: "High",
-      value: 8000,
-      notes: "Warm intro from Adam.",
       tags: ["gym", "high-intent"],
+      notes: "Warm intro from Adam.",
+      phones: ["+1 555-0101"],
+      emails: ["hello@northstarfit.com"],
+      instagramHandle: "northstarfit",
       lastTouchAt: new Date(),
       nextFollowUpAt: new Date(Date.now() + 1000 * 60 * 60 * 24),
     },
     {
-      company: "Summit Labs",
-      contactName: "Ben Rivera",
-      email: "ben@summitlabs.io",
-      phone: "+1 555-0102",
+      name: "Summit Labs",
+      website: "https://summitlabs.io",
+      industry: "SaaS",
       source: "LinkedIn",
       status: "New",
       priority: "Medium",
-      value: 3200,
-      notes: "Interested in pilot for Q2.",
       tags: ["saas"],
-      lastTouchAt: null,
+      notes: "Interested in pilot for Q2.",
+      emails: ["info@summitlabs.io"],
       nextFollowUpAt: new Date(),
     },
   ]);
 
-  console.log("Seed complete: added 2 leads.");
+  await PersonModel.insertMany([
+    {
+      companyId: companies[0]._id,
+      fullName: "Jenna Cole",
+      role: "Owner",
+      phones: ["+1 555-0101"],
+      emails: ["jenna@northstarfit.com"],
+      isPrimaryContact: true,
+      confidenceSource: "seed",
+      confidenceScore: 1,
+    },
+    {
+      companyId: companies[1]._id,
+      fullName: "Ben Rivera",
+      role: "Head of Ops",
+      emails: ["ben@summitlabs.io"],
+      isPrimaryContact: true,
+      confidenceSource: "seed",
+      confidenceScore: 1,
+    },
+  ]);
+
+  console.log("Seed complete: added 2 companies and 2 people.");
   process.exit(0);
 }
 

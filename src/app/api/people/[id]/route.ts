@@ -1,17 +1,17 @@
 import { isAuthenticatedFromCookies } from "@/lib/auth";
-import { addStatusChangeActivity } from "@/lib/services/leads";
-import { badRequest, notFound, ok, serialize, unauthorized } from "@/lib/http";
 import { connectDb } from "@/lib/db";
-import { LeadModel } from "@/lib/models/Lead";
-import { leadPatchSchema } from "@/lib/validation";
+import { badRequest, notFound, ok, serialize, unauthorized } from "@/lib/http";
+import { PersonModel } from "@/lib/models/Person";
+import { personPatchSchema } from "@/lib/validation";
 
 export async function GET(_: Request, ctx: { params: Promise<{ id: string }> }) {
   if (!(await isAuthenticatedFromCookies())) return unauthorized();
+
   await connectDb();
   const { id } = await ctx.params;
-  const lead = await LeadModel.findById(id).lean();
-  if (!lead) return notFound();
-  return ok(serialize(lead));
+  const person = await PersonModel.findById(id).lean();
+  if (!person) return notFound();
+  return ok(serialize(person));
 }
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -19,23 +19,27 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
   try {
     const { id } = await ctx.params;
-    const patch = leadPatchSchema.parse(await req.json());
+    const patch = personPatchSchema.parse(await req.json());
 
     await connectDb();
-    const existing = await LeadModel.findById(id);
+    const existing = await PersonModel.findById(id);
     if (!existing) return notFound();
 
-    const previousStatus = existing.status;
+    const targetCompanyId = patch.companyId || String(existing.companyId);
+
+    if (patch.isPrimaryContact) {
+      await PersonModel.updateMany(
+        { companyId: targetCompanyId, isPrimaryContact: true, _id: { $ne: id } },
+        { $set: { isPrimaryContact: false } },
+      );
+    }
+
     Object.assign(existing, patch);
     await existing.save();
 
-    if (patch.status && patch.status !== previousStatus) {
-      await addStatusChangeActivity(id, previousStatus, patch.status);
-    }
-
     return ok(serialize(existing));
   } catch (error) {
-    return badRequest("Invalid patch payload", error);
+    return badRequest("Invalid person patch payload", error);
   }
 }
 
@@ -45,7 +49,8 @@ export async function DELETE(_: Request, ctx: { params: Promise<{ id: string }> 
   await connectDb();
   const { id } = await ctx.params;
 
-  const deleted = await LeadModel.findByIdAndDelete(id);
+  const deleted = await PersonModel.findByIdAndDelete(id);
   if (!deleted) return notFound();
+
   return ok({ success: true });
 }

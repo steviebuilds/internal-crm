@@ -2,7 +2,7 @@ import { isAuthenticatedFromCookies } from "@/lib/auth";
 import { connectDb } from "@/lib/db";
 import { badRequest, ok, unauthorized, serialize, notFound } from "@/lib/http";
 import { ActivityModel } from "@/lib/models/Activity";
-import { LeadModel } from "@/lib/models/Lead";
+import { CompanyModel } from "@/lib/models/Company";
 import { activityInputSchema } from "@/lib/validation";
 
 export async function GET(_: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -10,7 +10,7 @@ export async function GET(_: Request, ctx: { params: Promise<{ id: string }> }) 
 
   await connectDb();
   const { id } = await ctx.params;
-  const activities = await ActivityModel.find({ leadId: id })
+  const activities = await ActivityModel.find({ companyId: id })
     .sort({ createdAt: -1 })
     .lean();
 
@@ -25,16 +25,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const payload = activityInputSchema.parse(await req.json());
     await connectDb();
 
-    const lead = await LeadModel.findById(id);
-    if (!lead) return notFound();
+    const company = await CompanyModel.findById(id);
+    if (!company) return notFound();
 
     const activity = await ActivityModel.create({
-      leadId: id,
+      companyId: id,
       ...payload,
     });
 
-    lead.lastTouchAt = new Date();
-    await lead.save();
+    company.lastTouchAt = new Date();
+    await company.save();
 
     return ok(serialize(activity), { status: 201 });
   } catch (error) {
