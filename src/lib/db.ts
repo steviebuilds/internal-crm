@@ -7,12 +7,6 @@ declare global {
   } | null;
 }
 
-const MONGODB_URI = process.env.MONGODB_URI;
-
-if (!MONGODB_URI) {
-  throw new Error("MONGODB_URI is not configured");
-}
-
 let cached = global.mongooseCache;
 
 if (!cached) {
@@ -25,7 +19,11 @@ export async function connectDb() {
   }
 
   if (!cached?.promise) {
-    const mongoUri = MONGODB_URI as string;
+    const mongoUri = process.env.MONGODB_URI;
+    if (!mongoUri) {
+      throw new Error("MONGODB_URI is not configured");
+    }
+
     cached!.promise = mongoose.connect(mongoUri, {
       dbName: process.env.MONGODB_DB || "crm_v1",
       autoIndex: true,
