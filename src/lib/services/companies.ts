@@ -1,10 +1,10 @@
-import mongoose from "mongoose";
 import { endOfDay, startOfDay } from "date-fns";
 import { connectDb } from "@/lib/db";
 import { COMPANY_STATUSES } from "@/lib/constants";
 import { ActivityModel } from "@/lib/models/Activity";
 import { CompanyModel } from "@/lib/models/Company";
 import { PersonModel } from "@/lib/models/Person";
+import { getCanonicalCompanyName } from "@/lib/company-name";
 
 type CompanyFilters = {
   q?: string;
@@ -14,22 +14,8 @@ type CompanyFilters = {
   pageSize?: number;
 };
 
-const INVALID_COMPANY_NAME_TOKENS = new Set([
-  "-",
-  "—",
-  "n/a",
-  "na",
-  "unknown",
-  "null",
-  "undefined",
-  "none",
-]);
-
-function hasCanonicalCompanyName(value: unknown) {
-  if (typeof value !== "string") return false;
-  const trimmed = value.trim();
-  if (!trimmed) return false;
-  return !INVALID_COMPANY_NAME_TOKENS.has(trimmed.toLowerCase());
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function getSafePagination(page?: number, pageSize?: number) {
@@ -43,16 +29,23 @@ function getSafePagination(page?: number, pageSize?: number) {
 }
 
 function buildCompanyQuery(filters: CompanyFilters) {
-  const query: Record<string, unknown> = {
-    name: {
-      $exists: true,
-      $type: "string",
-      $nin: ["", "-", "—", "N/A", "n/a", "NA", "null", "undefined", "unknown", "Unknown"],
-    },
-  };
+  const query: Record<string, unknown> = {};
 
   if (filters.q?.trim()) {
-    query.$text = { $search: filters.q.trim() };
+    const search = new RegExp(escapeRegex(filters.q.trim()), "i");
+    query.$or = [
+      { name: search },
+      { companyName: search },
+      { company: search },
+      { businessName: search },
+      { business_name: search },
+      { industry: search },
+      { emails: search },
+      { phones: search },
+      { notes: search },
+      { website: search },
+      { assignedTo: search },
+    ];
   }
 
   if (filters.status) query.status = filters.status;
@@ -70,26 +63,27 @@ export async function listCompanies(filters: CompanyFilters) {
 
   let total = await CompanyModel.countDocuments(query);
 
-  let companies = await (async () => {
-    const findQuery = CompanyModel.find(query).skip(skip).limit(pageSize).lean();
+  const rawCompanies = await CompanyModel.find(query)
+    .skip(skip)
+    .limit(pageSize)
+    .sort({ updatedAt: -1, _id: -1 })
+    .lean();
 
-    if (query.$text) {
-      findQuery.sort({ score: { $meta: "textScore" }, updatedAt: -1, _id: -1 });
-      findQuery.select({ score: { $meta: "textScore" } });
-    } else {
-      findQuery.sort({ updatedAt: -1, _id: -1 });
-    }
+  const companies = rawCompanies
+    .map((company) => {
+      const canonicalName = getCanonicalCompanyName(company as Record<string, unknown>);
+      if (!canonicalName) return null;
+      return {
+        ...company,
+        name: canonicalName,
+      };
+    })
+    .filter((company): company is NonNullable<typeof company> => company !== null);
 
-    return findQuery;
-  })();
-
-  // Hotfix guard: ensure malformed rows never escape the API response.
-  const beforeGuard = companies.length;
-  companies = companies.filter((company) => hasCanonicalCompanyName((company as { name?: unknown }).name));
-  const dropped = beforeGuard - companies.length;
+  const dropped = rawCompanies.length - companies.length;
   if (dropped > 0) {
     total = Math.max(0, total - dropped);
-    console.warn(`[companies] dropped ${dropped} invalid company rows during hotfix canonical-name guard`);
+    console.warn(`[companies] dropped ${dropped} invalid company rows during canonical-name normalization`);
   }
 
   const companyIds = companies.map((c) => c._id);

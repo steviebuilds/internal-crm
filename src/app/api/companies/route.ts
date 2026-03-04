@@ -13,24 +13,6 @@ function parsePositiveInt(value: string | null, fallback: number) {
   return Math.floor(parsed);
 }
 
-const INVALID_COMPANY_NAME_TOKENS = new Set([
-  "-",
-  "—",
-  "n/a",
-  "na",
-  "unknown",
-  "null",
-  "undefined",
-  "none",
-]);
-
-function hasCanonicalCompanyName(value: unknown) {
-  if (typeof value !== "string") return false;
-  const trimmed = value.trim();
-  if (!trimmed) return false;
-  return !INVALID_COMPANY_NAME_TOKENS.has(trimmed.toLowerCase());
-}
-
 export async function GET(req: Request) {
   if (!(await isAuthenticatedFromCookies())) return unauthorized();
 
@@ -44,14 +26,12 @@ export async function GET(req: Request) {
     const pageSize = parsePositiveInt(searchParams.get("pageSize"), 50);
 
     const { companies, pagination } = await listCompanies({ q, status, priority, page, pageSize });
-    const canonicalCompanies = companies.filter((company) => hasCanonicalCompanyName((company as { name?: unknown }).name));
 
     if (!withMeta) {
       return ok(
         serialize({
-          companies: canonicalCompanies,
+          companies,
           ...pagination,
-          total: canonicalCompanies.length < companies.length ? canonicalCompanies.length : pagination.total,
         }),
       );
     }
@@ -63,11 +43,10 @@ export async function GET(req: Request) {
 
     return ok(
       serialize({
-        companies: canonicalCompanies,
+        companies,
         pipeline,
         followUps,
         ...pagination,
-        total: canonicalCompanies.length < companies.length ? canonicalCompanies.length : pagination.total,
       }),
     );
   } catch (error) {
