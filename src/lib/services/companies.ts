@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { endOfDay, startOfDay } from "date-fns";
 import { connectDb } from "@/lib/db";
 import { COMPANY_STATUSES } from "@/lib/constants";
+import { normalizeLegacyLead, type NormalizedLegacyCompany } from "@/lib/legacy/lead-normalization";
 import { ActivityModel } from "@/lib/models/Activity";
 import { CompanyModel } from "@/lib/models/Company";
 import { PersonModel } from "@/lib/models/Person";
@@ -37,40 +38,74 @@ function buildCompanyQuery(filters: CompanyFilters) {
   return query;
 }
 
+function isLegacyFallbackEnabled() {
+  return process.env.ENABLE_LEGACY_LEADS_FALLBACK === "1";
+}
+
+function applyInMemoryFilters(
+  company: NormalizedLegacyCompany,
+  filters: CompanyFilters,
+) {
+  if (filters.status && company.status !== filters.status) return false;
+  if (filters.priority && company.priority !== filters.priority) return false;
+
+  if (filters.q?.trim()) {
+    const q = filters.q.trim().toLowerCase();
+    const haystack = [
+      company.name,
+      company.industry,
+      company.website,
+      company.notes,
+      ...company.emails,
+      ...company.phones,
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    if (!haystack.includes(q)) return false;
+  }
+
+  return true;
+}
+
 async function listFromLegacyLeads(filters: CompanyFilters) {
   const db = mongoose.connection.db;
-  if (!db) return { companies: [], total: 0 };
+  if (!db) return { companies: [], total: 0, skippedMissingName: 0 };
 
   const collections = (await db.listCollections({ name: "leads" }).toArray()).map((c) => c.name);
   if (!collections.includes("leads")) {
-    return { companies: [], total: 0 };
+    return { companies: [], total: 0, skippedMissingName: 0 };
   }
 
   const leads = db.collection("leads");
-  const query: Record<string, unknown> = {};
+  const rawDocs = await leads.find({}, { sort: { updatedAt: -1, _id: -1 } }).toArray();
 
-  if (filters.status) query.status = filters.status;
-  if (filters.priority) query.priority = filters.priority;
+  const mapped: Record<string, unknown>[] = [];
+  let skippedMissingName = 0;
 
-  if (filters.q?.trim()) {
-    const q = filters.q.trim();
-    query.$or = [
-      { name: { $regex: q, $options: "i" } },
-      { industry: { $regex: q, $options: "i" } },
-      { website: { $regex: q, $options: "i" } },
-      { notes: { $regex: q, $options: "i" } },
-      { emails: { $elemMatch: { $regex: q, $options: "i" } } },
-      { phones: { $elemMatch: { $regex: q, $options: "i" } } },
-    ];
+  for (const doc of rawDocs) {
+    const normalized = normalizeLegacyLead(doc as Record<string, unknown>);
+    if (!normalized.ok) {
+      if (normalized.reason === "missing-name") skippedMissingName += 1;
+      continue;
+    }
+
+    if (!applyInMemoryFilters(normalized.company, filters)) {
+      continue;
+    }
+
+    mapped.push({
+      _id: doc._id,
+      ...normalized.company,
+    });
   }
 
   const { page, pageSize } = getSafePagination(filters.page, filters.pageSize);
   const skip = (page - 1) * pageSize;
 
-  const total = await leads.countDocuments(query);
-  const companies = await leads.find(query).sort({ updatedAt: -1, _id: -1 }).skip(skip).limit(pageSize).toArray();
+  const companies = mapped.slice(skip, skip + pageSize);
 
-  return { companies, total };
+  return { companies, total: mapped.length, skippedMissingName };
 }
 
 export async function listCompanies(filters: CompanyFilters) {
@@ -95,12 +130,18 @@ export async function listCompanies(filters: CompanyFilters) {
     return findQuery;
   })();
 
-  // Safety net for legacy deployments where data still sits in `leads`.
-  if (total === 0) {
+  // Legacy fallback is opt-in only to avoid serving schema-mismatched leads as companies.
+  if (total === 0 && isLegacyFallbackEnabled()) {
     const legacy = await listFromLegacyLeads(filters);
     if (legacy.total > 0) {
       companies = legacy.companies as unknown as typeof companies;
       total = legacy.total;
+    }
+
+    if (legacy.skippedMissingName > 0) {
+      console.warn(
+        `[companies] skipped ${legacy.skippedMissingName} legacy lead rows missing canonical company name`,
+      );
     }
   }
 

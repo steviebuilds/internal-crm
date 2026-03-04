@@ -9,6 +9,7 @@
     "lint": "eslint",
     "seed": "tsx src/scripts/seed.ts",
     "migrate:leads-to-companies": "tsx src/scripts/migrate-leads-to-companies.ts",
+    "migrate:legacy-leads-normalized": "tsx src/scripts/migrate-legacy-leads-normalized.ts",
     "password:hash": "node -e \"const bcrypt=require('bcryptjs');console.log(bcrypt.hashSync(process.argv[1],12))\""
   },
   "dependencies": {

@@ -44,18 +44,26 @@ For list endpoints (`/api/companies`, `/api/people`, `/api/companies/:id/people`
 
 Search is DB-level first, then paginated.
 
-## Migration (clean rename from leads → companies)
-Run once in production after deploy:
+## Migration (legacy leads → canonical companies)
+**Recommended production path (idempotent):**
 ```bash
-npm run migrate:leads-to-companies -- --threshold=0.85
+# 1) dry-run, inspect counts + sample mappings
+npm run migrate:legacy-leads-normalized -- --sample=5
+
+# 2) apply once satisfied
+npm run migrate:legacy-leads-normalized -- --apply --sample=5
 ```
 
-What it does:
-1. Renames Mongo collection `leads` → `companies` (if needed)
-2. Migrates `activities.leadId` → `activities.companyId`
-3. Normalizes company shape fields
-4. Backfills primary people with confidence-based rules
-5. Uncertain matches are preserved in company notes as `[unverified-contact]`
+This migration:
+1. Reads legacy docs from `leads`
+2. Maps known legacy fields (`company`, `companyName`, `business_name`, etc.) to canonical `companies` fields
+3. Skips rows without a real company name (and reports skipped count)
+4. Upserts by `_id` for idempotency (safe re-runs, no duplicate inserts)
+
+Legacy runtime fallback is disabled by default and can be explicitly enabled with:
+```bash
+ENABLE_LEGACY_LEADS_FALLBACK=1
+```
 
 ## Rollback notes
 - Snapshot DB before migration.
