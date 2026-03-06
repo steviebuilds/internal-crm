@@ -29,6 +29,8 @@ Company-first outreach CRM built with Next.js 16, TypeScript, Tailwind, and Mong
 - `notes`, `isPrimaryContact`, timestamps
 
 ## API
+
+Internal cookie-auth API:
 - `GET/POST /api/companies`
 - `GET/PATCH/DELETE /api/companies/:id`
 - `GET/POST /api/companies/:id/people`
@@ -36,6 +38,24 @@ Company-first outreach CRM built with Next.js 16, TypeScript, Tailwind, and Mong
 - `GET/POST /api/people`
 - `GET/PATCH/DELETE /api/people/:id`
 - `GET/POST /api/follow-ups`
+
+External API for agents/scripts:
+- `GET /api/v1`
+- `GET /api/v1/health`
+- `GET /api/v1/dashboard`
+- `GET/POST /api/v1/companies`
+- `GET/PATCH/DELETE /api/v1/companies/:id`
+- `GET/POST /api/v1/companies/:id/activities`
+- `GET/POST /api/v1/companies/:id/people`
+- `GET/PATCH/DELETE /api/v1/activities/:id`
+- `GET/POST /api/v1/people`
+- `GET/PATCH/DELETE /api/v1/people/:id`
+
+CLI entrypoint:
+- `yarn crm --help`
+
+Reference:
+- `docs/API_CLI_REFERENCE.md`
 
 ## Pagination contract
 For list endpoints (`/api/companies`, `/api/people`, `/api/companies/:id/people`):
