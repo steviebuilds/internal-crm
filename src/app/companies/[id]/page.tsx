@@ -2,89 +2,75 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
-import { ACTIVITY_TYPES, COMPANY_PRIORITIES, COMPANY_SOURCES, COMPANY_STATUSES } from "@/lib/constants";
-import { Activity, Company, CompanyPriority, CompanySource, CompanyStatus, Person } from "@/lib/types";
+import { useEffect, useMemo, useState } from "react";
+import {
+  CalendarDays,
+  ExternalLink,
+  Facebook,
+  Globe,
+  Instagram,
+  Linkedin,
+  Mail,
+  Pencil,
+  Phone,
+  Plus,
+  StickyNote,
+  Trash2,
+} from "lucide-react";
+import { CompanyEditorModal } from "@/components/company-workspace/CompanyEditorModal";
+import { PersonEditorModal } from "@/components/company-workspace/PersonEditorModal";
+import {
+  CompanyForm,
+  EMPTY_PERSON_FORM,
+  parseCsv,
+  PersonForm,
+  toCompanyForm,
+  toPersonForm,
+} from "@/components/company-workspace/form-utils";
+import { Activity, Company, Person } from "@/lib/types";
 
-type CompanyForm = {
-  name: string;
-  website: string;
-  industry: string;
-  emails: string;
-  phones: string;
-  assignedTo: string;
-  instagramHandle: string;
-  instagramUrl: string;
-  facebookUrl: string;
-  linkedinUrl: string;
-  xUrl: string;
-  tiktokUrl: string;
-  youtubeUrl: string;
-  source: CompanySource;
-  status: CompanyStatus;
-  priority: CompanyPriority;
-  tags: string;
-  notes: string;
-  nextFollowUpAt: string;
-};
-
-type PersonForm = {
-  fullName: string;
-  role: string;
-  phones: string;
-  emails: string;
-  linkedinUrl: string;
-  instagramHandle: string;
-  instagramUrl: string;
-  notes: string;
-  isPrimaryContact: boolean;
-};
-
-const EMPTY_PERSON_FORM: PersonForm = {
-  fullName: "",
-  role: "",
-  phones: "",
-  emails: "",
-  linkedinUrl: "",
-  instagramHandle: "",
-  instagramUrl: "",
-  notes: "",
-  isPrimaryContact: false,
-};
-
-function parseCsv(value: string) {
-  return value.split(",").map((v) => v.trim()).filter(Boolean);
+function formatDateTime(value?: string | null) {
+  if (!value) return "None";
+  return new Date(value).toLocaleString();
 }
 
-function toDateTimeLocal(value?: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  const pad = (n: number) => `${n}`.padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+function initials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("");
 }
 
-function toForm(company: Company): CompanyForm {
-  return {
-    name: company.name,
-    website: company.website || "",
-    industry: company.industry || "",
-    emails: (company.emails || []).join(", "),
-    phones: (company.phones || []).join(", "),
-    assignedTo: company.assignedTo || "",
-    instagramHandle: company.instagramHandle || "",
-    instagramUrl: company.instagramUrl || "",
-    facebookUrl: company.facebookUrl || "",
-    linkedinUrl: company.linkedinUrl || "",
-    xUrl: company.xUrl || "",
-    tiktokUrl: company.tiktokUrl || "",
-    youtubeUrl: company.youtubeUrl || "",
-    source: company.source,
-    status: company.status,
-    priority: company.priority,
-    tags: (company.tags || []).join(", "),
-    notes: company.notes || "",
-    nextFollowUpAt: toDateTimeLocal(company.nextFollowUpAt),
-  };
+function statusTone(status: Company["status"]) {
+  switch (status) {
+    case "Won":
+      return "bg-emerald-100 text-emerald-800";
+    case "Lost":
+      return "bg-rose-100 text-rose-700";
+    case "Interested":
+      return "bg-amber-100 text-amber-800";
+    case "Demo Sent":
+      return "bg-sky-100 text-sky-800";
+    case "Contacted":
+      return "bg-violet-100 text-violet-800";
+    default:
+      return "bg-slate-200 text-slate-700";
+  }
+}
+
+function activityTone(type: Activity["type"]) {
+  switch (type) {
+    case "call":
+      return "bg-sky-100 text-sky-800";
+    case "email":
+      return "bg-amber-100 text-amber-800";
+    case "status-change":
+      return "bg-rose-100 text-rose-700";
+    default:
+      return "bg-slate-200 text-slate-700";
+  }
 }
 
 export default function CompanyPage() {
@@ -94,12 +80,16 @@ export default function CompanyPage() {
   const [company, setCompany] = useState<Company | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
-  const [form, setForm] = useState<CompanyForm | null>(null);
+  const [companyForm, setCompanyForm] = useState<CompanyForm | null>(null);
   const [personForm, setPersonForm] = useState<PersonForm>(EMPTY_PERSON_FORM);
-  const [body, setBody] = useState("");
-  const [type, setType] = useState<(typeof ACTIVITY_TYPES)[number]>("note");
-  const [saving, setSaving] = useState(false);
+  const [editingPerson, setEditingPerson] = useState<Person | null>(null);
+  const [noteBody, setNoteBody] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
   const [savingCompany, setSavingCompany] = useState(false);
+  const [savingPerson, setSavingPerson] = useState(false);
+  const [deletingPersonId, setDeletingPersonId] = useState<string | null>(null);
+  const [companyModalOpen, setCompanyModalOpen] = useState(false);
+  const [personModalOpen, setPersonModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
@@ -117,7 +107,7 @@ export default function CompanyPage() {
 
     const companyData = (await companyRes.json()) as Company;
     setCompany(companyData);
-    setForm(toForm(companyData));
+    setCompanyForm(toCompanyForm(companyData));
     setActivities((await actRes.json()) as Activity[]);
     const peopleData = (await peopleRes.json()) as { people: Person[] };
     setPeople(peopleData.people || []);
@@ -128,86 +118,118 @@ export default function CompanyPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  async function addActivity(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
+  const socialLinks = useMemo(() => {
+    if (!company) return [];
+    return [
+      { label: "Website", href: company.website, icon: Globe },
+      { label: "Instagram", href: company.instagramUrl, icon: Instagram },
+      { label: "Facebook", href: company.facebookUrl, icon: Facebook },
+      { label: "LinkedIn", href: company.linkedinUrl, icon: Linkedin },
+      { label: "X", href: company.xUrl, icon: ExternalLink },
+    ].filter((item) => item.href);
+  }, [company]);
+
+  function openCreatePersonModal() {
+    setEditingPerson(null);
+    setPersonForm(EMPTY_PERSON_FORM);
+    setPersonModalOpen(true);
+  }
+
+  function openEditPersonModal(person: Person) {
+    setEditingPerson(person);
+    setPersonForm(toPersonForm(person));
+    setPersonModalOpen(true);
+  }
+
+  async function addNote(event: React.FormEvent) {
+    event.preventDefault();
+    if (!noteBody.trim()) return;
+
+    setSavingNote(true);
     setError(null);
 
     const res = await fetch(`/api/companies/${id}/activities`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type, body }),
+      body: JSON.stringify({ type: "note", body: noteBody.trim() }),
     });
 
-    setSaving(false);
+    setSavingNote(false);
     if (!res.ok) {
-      setError("Failed to add activity");
+      setError("Failed to add note");
       return;
     }
 
-    setBody("");
-    setType("note");
+    setNoteBody("");
     await load();
   }
 
-  async function addPerson(e: React.FormEvent) {
-    e.preventDefault();
+  async function savePerson(event: React.FormEvent) {
+    event.preventDefault();
     if (!personForm.fullName.trim()) return;
 
-    setSavingCompany(true);
-    const res = await fetch(`/api/companies/${id}/people`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        companyId: id,
-        fullName: personForm.fullName,
-        role: personForm.role,
-        phones: parseCsv(personForm.phones),
-        emails: parseCsv(personForm.emails),
-        linkedinUrl: personForm.linkedinUrl,
-        instagramHandle: personForm.instagramHandle,
-        instagramUrl: personForm.instagramUrl,
-        notes: personForm.notes,
-        isPrimaryContact: personForm.isPrimaryContact,
-      }),
-    });
-    setSavingCompany(false);
+    setSavingPerson(true);
+    setError(null);
 
+    const payload = {
+      companyId: id,
+      fullName: personForm.fullName,
+      role: personForm.role,
+      phones: parseCsv(personForm.phones),
+      emails: parseCsv(personForm.emails),
+      linkedinUrl: personForm.linkedinUrl,
+      instagramHandle: personForm.instagramHandle,
+      instagramUrl: personForm.instagramUrl,
+      notes: personForm.notes,
+      isPrimaryContact: personForm.isPrimaryContact,
+    };
+
+    const res = await fetch(editingPerson ? `/api/people/${editingPerson._id}` : `/api/companies/${id}/people`, {
+      method: editingPerson ? "PATCH" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    setSavingPerson(false);
     if (!res.ok) {
-      setError("Failed to add person");
+      setError(editingPerson ? "Failed to save contact" : "Failed to add contact");
       return;
     }
 
+    setPersonModalOpen(false);
+    setEditingPerson(null);
     setPersonForm(EMPTY_PERSON_FORM);
     await load();
   }
 
   async function removePerson(personId: string) {
-    setSavingCompany(true);
-    const res = await fetch(`/api/people/${personId}`, { method: "DELETE" });
-    setSavingCompany(false);
+    setDeletingPersonId(personId);
+    setError(null);
 
+    const res = await fetch(`/api/people/${personId}`, { method: "DELETE" });
+
+    setDeletingPersonId(null);
     if (!res.ok) {
-      setError("Failed to remove person");
+      setError("Failed to remove contact");
       return;
     }
 
     await load();
   }
 
-  async function saveCompany(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form) return;
+  async function saveCompany(event: React.FormEvent) {
+    event.preventDefault();
+    if (!companyForm) return;
 
     setSavingCompany(true);
     setError(null);
 
     const payload = {
-      ...form,
-      tags: parseCsv(form.tags),
-      phones: parseCsv(form.phones),
-      emails: parseCsv(form.emails),
-      nextFollowUpAt: form.nextFollowUpAt ? new Date(form.nextFollowUpAt).toISOString() : null,
+      ...companyForm,
+      tags: parseCsv(companyForm.tags),
+      phones: parseCsv(companyForm.phones),
+      emails: parseCsv(companyForm.emails),
+      nextFollowUpAt: companyForm.nextFollowUpAt ? new Date(companyForm.nextFollowUpAt).toISOString() : null,
     };
 
     const res = await fetch(`/api/companies/${id}`, {
@@ -222,146 +244,279 @@ export default function CompanyPage() {
       return;
     }
 
+    setCompanyModalOpen(false);
     await load();
   }
 
   return (
-    <main className="mx-auto max-w-5xl space-y-5 p-6 md:p-8">
-      <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Company workspace</h1>
-          {company ? <p className="text-sm text-slate-600">{company.name}</p> : null}
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(226,232,240,0.7),_transparent_35%),linear-gradient(180deg,_#f8fafc_0%,_#eef2f7_100%)] px-4 py-6 md:px-8 md:py-8">
+      <div className="mx-auto max-w-6xl space-y-6">
+        <section className="overflow-hidden rounded-[32px] border border-white/70 bg-white/95 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
+          <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-sm font-semibold tracking-[0.2em] text-white">
+                {company ? initials(company.name) : "--"}
+              </div>
+              <div>
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${company ? statusTone(company.status) : "bg-slate-100 text-slate-500"}`}>
+                    {company?.status || "Loading"}
+                  </span>
+                  {company ? <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">{company.source}</span> : null}
+                  {company ? <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">Priority {company.priority}</span> : null}
+                </div>
+                <h1 className="text-3xl font-semibold tracking-tight text-slate-950">{company?.name || "Company workspace"}</h1>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                  The essentials stay visible here. Editing happens in focused modals so this page reads like a workspace instead of a spreadsheet.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => setCompanyModalOpen(true)}
+                disabled={!companyForm}
+                className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
+              >
+                <Pencil className="h-4 w-4" />
+                Edit business
+              </button>
+              <Link href="/" className="inline-flex cursor-pointer items-center rounded-full border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950">
+                Back
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {error ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+
+        <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+          <section className="rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-lg font-semibold tracking-tight text-slate-950">Business snapshot</h2>
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Live record</span>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <InfoTile label="Industry" value={company?.industry || "Not set"} />
+              <InfoTile label="Assigned to" value={company?.assignedTo || "Unassigned"} />
+              <InfoTile label="Last touch" value={formatDateTime(company?.lastTouchAt)} icon={CalendarDays} />
+              <InfoTile label="Next follow-up" value={formatDateTime(company?.nextFollowUpAt)} icon={CalendarDays} />
+              <InfoTile label="Phones" value={company?.phones?.join(", ") || "None"} icon={Phone} />
+              <InfoTile label="Emails" value={company?.emails?.join(", ") || "None"} icon={Mail} />
+            </div>
+
+            <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Socials and links</h3>
+              <div className="mt-4 flex flex-wrap gap-3">
+                {socialLinks.length ? (
+                  socialLinks.map(({ label, href, icon: Icon }) => (
+                    <a
+                      key={label}
+                      href={href}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                    >
+                      <Icon className="h-4 w-4" />
+                      {label}
+                    </a>
+                  ))
+                ) : (
+                  <p className="text-sm text-slate-500">No social links saved yet.</p>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-lg font-semibold tracking-tight text-slate-950">Record details</h2>
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Quick scan</span>
+            </div>
+            <div className="space-y-4">
+              <StackedInfo label="Address" value={company?.addresses?.join("\n") || "No address saved"} />
+              <StackedInfo label="Tags" value={company?.tags?.length ? company.tags.join(", ") : "No tags"} />
+              {company?.notes ? <StackedInfo label="Notes" value={company.notes} accent /> : null}
+            </div>
+          </section>
         </div>
-        <Link href="/" className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50">Back</Link>
+
+        <section className="rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight text-slate-950">Contacts</h2>
+              <p className="mt-1 text-sm text-slate-500">Keep the list clean here. Edit or add contacts without burying the page in forms.</p>
+            </div>
+            <button
+              type="button"
+              onClick={openCreatePersonModal}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+            >
+              <Plus className="h-4 w-4" />
+              Add contact
+            </button>
+          </div>
+
+          {people.length ? (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {people.map((person) => (
+                <article key={person._id} className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-semibold text-slate-950">{person.fullName}</h3>
+                        {person.isPrimaryContact ? <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-800">Primary</span> : null}
+                      </div>
+                      <p className="mt-1 text-sm text-slate-500">{person.role || "No role set"}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openEditPersonModal(person)}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removePerson(person._id)}
+                        disabled={deletingPersonId === person._id}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-50 disabled:opacity-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-2 text-sm text-slate-600">
+                    <p>{person.emails.length ? person.emails.join(", ") : "No email saved"}</p>
+                    <p>{person.phones.length ? person.phones.join(", ") : "No phone saved"}</p>
+                    {person.instagramUrl || person.linkedinUrl ? (
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {person.instagramUrl ? <InlineLink href={person.instagramUrl} label="Instagram" icon={Instagram} /> : null}
+                        {person.linkedinUrl ? <InlineLink href={person.linkedinUrl} label="LinkedIn" icon={Linkedin} /> : null}
+                      </div>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 p-8 text-sm text-slate-500">No contacts added yet.</div>
+          )}
+        </section>
+
+        <div className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
+          <form onSubmit={addNote} className="rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="rounded-2xl bg-slate-950 p-2 text-white">
+                <StickyNote className="h-4 w-4" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold tracking-tight text-slate-950">Add note</h2>
+                <p className="text-sm text-slate-500">One clean entry. No extra category noise.</p>
+              </div>
+            </div>
+            <textarea
+              required
+              value={noteBody}
+              onChange={(event) => setNoteBody(event.target.value)}
+              placeholder="Log the next thing that matters..."
+              className="min-h-40 w-full rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:bg-white"
+            />
+            <div className="mt-4 flex justify-end">
+              <button
+                type="submit"
+                disabled={savingNote}
+                className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
+              >
+                {savingNote ? "Saving..." : "Add note"}
+              </button>
+            </div>
+          </form>
+
+          <section className="rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-lg font-semibold tracking-tight text-slate-950">Timeline</h2>
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{activities.length} entries</span>
+            </div>
+            <div className="space-y-3">
+              {activities.length === 0 ? <p className="text-sm text-slate-500">No activity yet.</p> : null}
+              {activities.map((activity) => (
+                <article key={activity._id} className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${activityTone(activity.type)}`}>
+                      {activity.type}
+                    </span>
+                    <span className="text-xs font-medium text-slate-400">{new Date(activity.createdAt).toLocaleString()}</span>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-slate-700">{activity.body}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+        </div>
       </div>
 
-      {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">{error}</div> : null}
+      <CompanyEditorModal
+        open={companyModalOpen}
+        form={companyForm}
+        saving={savingCompany}
+        onClose={() => setCompanyModalOpen(false)}
+        onChange={(patch) => setCompanyForm((current) => (current ? { ...current, ...patch } : current))}
+        onSubmit={saveCompany}
+      />
 
-      {form ? (
-        <form onSubmit={saveCompany} className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold">Edit company</h2>
-          <div className="grid grid-cols-2 gap-2">
-            <Input label="Name" value={form.name} onChange={(v) => setForm((f) => (f ? { ...f, name: v } : f))} required />
-            <Input label="Website" value={form.website} onChange={(v) => setForm((f) => (f ? { ...f, website: v } : f))} />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <Input label="Industry" value={form.industry} onChange={(v) => setForm((f) => (f ? { ...f, industry: v } : f))} />
-            <Input label="Assigned to" value={form.assignedTo} onChange={(v) => setForm((f) => (f ? { ...f, assignedTo: v } : f))} />
-          </div>
-          <Input label="Emails" value={form.emails} onChange={(v) => setForm((f) => (f ? { ...f, emails: v } : f))} />
-          <Input label="Phones" value={form.phones} onChange={(v) => setForm((f) => (f ? { ...f, phones: v } : f))} />
-          <div className="grid grid-cols-2 gap-2">
-            <Input label="Instagram handle" value={form.instagramHandle} onChange={(v) => setForm((f) => (f ? { ...f, instagramHandle: v } : f))} />
-            <Input label="Instagram URL" value={form.instagramUrl} onChange={(v) => setForm((f) => (f ? { ...f, instagramUrl: v } : f))} />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <Input label="Facebook URL" value={form.facebookUrl} onChange={(v) => setForm((f) => (f ? { ...f, facebookUrl: v } : f))} />
-            <Input label="LinkedIn URL" value={form.linkedinUrl} onChange={(v) => setForm((f) => (f ? { ...f, linkedinUrl: v } : f))} />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <Input label="X URL" value={form.xUrl} onChange={(v) => setForm((f) => (f ? { ...f, xUrl: v } : f))} />
-            <Input label="TikTok URL" value={form.tiktokUrl} onChange={(v) => setForm((f) => (f ? { ...f, tiktokUrl: v } : f))} />
-          </div>
-          <Input label="YouTube URL" value={form.youtubeUrl} onChange={(v) => setForm((f) => (f ? { ...f, youtubeUrl: v } : f))} />
-          <div className="grid grid-cols-3 gap-2">
-            <Select label="Source" value={form.source} options={COMPANY_SOURCES} onChange={(v) => setForm((f) => (f ? { ...f, source: v as CompanySource } : f))} />
-            <Select label="Status" value={form.status} options={COMPANY_STATUSES} onChange={(v) => setForm((f) => (f ? { ...f, status: v as CompanyStatus } : f))} />
-            <Select label="Priority" value={form.priority} options={COMPANY_PRIORITIES} onChange={(v) => setForm((f) => (f ? { ...f, priority: v as CompanyPriority } : f))} />
-          </div>
-          <Input label="Tags" value={form.tags} onChange={(v) => setForm((f) => (f ? { ...f, tags: v } : f))} />
-          <Input label="Next follow-up" type="datetime-local" value={form.nextFollowUpAt} onChange={(v) => setForm((f) => (f ? { ...f, nextFollowUpAt: v } : f))} />
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-700">Notes</span>
-            <textarea className="min-h-24 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.notes} onChange={(e) => setForm((f) => (f ? { ...f, notes: e.target.value } : f))} />
-          </label>
-          <button disabled={savingCompany} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60">{savingCompany ? "Saving..." : "Save company"}</button>
-        </form>
-      ) : null}
-
-      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold">People</h2>
-        <form onSubmit={addPerson} className="grid gap-2 md:grid-cols-2">
-          <Input label="Full name" value={personForm.fullName} onChange={(v) => setPersonForm((p) => ({ ...p, fullName: v }))} required />
-          <Input label="Role" value={personForm.role} onChange={(v) => setPersonForm((p) => ({ ...p, role: v }))} />
-          <Input label="Phones" value={personForm.phones} onChange={(v) => setPersonForm((p) => ({ ...p, phones: v }))} />
-          <Input label="Emails" value={personForm.emails} onChange={(v) => setPersonForm((p) => ({ ...p, emails: v }))} />
-          <Input label="LinkedIn URL" value={personForm.linkedinUrl} onChange={(v) => setPersonForm((p) => ({ ...p, linkedinUrl: v }))} />
-          <Input label="Instagram handle" value={personForm.instagramHandle} onChange={(v) => setPersonForm((p) => ({ ...p, instagramHandle: v }))} />
-          <Input label="Instagram URL" value={personForm.instagramUrl} onChange={(v) => setPersonForm((p) => ({ ...p, instagramUrl: v }))} />
-          <label className="block text-sm">
-            <span className="mb-1 block font-medium text-slate-700">Primary contact</span>
-            <input type="checkbox" checked={personForm.isPrimaryContact} onChange={(e) => setPersonForm((p) => ({ ...p, isPrimaryContact: e.target.checked }))} className="h-4 w-4" />
-          </label>
-          <label className="block text-sm md:col-span-2">
-            <span className="mb-1 block font-medium text-slate-700">Notes</span>
-            <textarea value={personForm.notes} onChange={(e) => setPersonForm((p) => ({ ...p, notes: e.target.value }))} className="min-h-20 w-full rounded-lg border border-slate-300 px-3 py-2" />
-          </label>
-          <button className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 md:col-span-2">Add person</button>
-        </form>
-
-        {people.map((person) => (
-          <div key={person._id} className="rounded-lg border border-slate-200 p-3">
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="font-medium text-slate-900">{person.fullName} {person.isPrimaryContact ? <span className="text-xs text-emerald-700">(Primary)</span> : null}</div>
-                <div className="text-xs text-slate-600">{person.role || "—"}</div>
-                <div className="text-xs text-slate-600">{(person.emails || []).join(", ") || "No emails"}</div>
-                <div className="text-xs text-slate-600">{(person.phones || []).join(", ") || "No phones"}</div>
-              </div>
-              <button className="rounded-md border border-rose-200 px-2 py-1 text-sm text-rose-700 transition hover:bg-rose-50" onClick={() => removePerson(person._id)}>Remove</button>
-            </div>
-          </div>
-        ))}
-      </section>
-
-      <form onSubmit={addActivity} className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold">Quick add activity</h2>
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-slate-700">Type</span>
-          <select className="w-full rounded-lg border border-slate-300 px-3 py-2" value={type} onChange={(e) => setType(e.target.value as (typeof ACTIVITY_TYPES)[number])}>
-            {ACTIVITY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </label>
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-slate-700">Details</span>
-          <textarea required className="min-h-24 w-full rounded-lg border border-slate-300 px-3 py-2" value={body} onChange={(e) => setBody(e.target.value)} />
-        </label>
-        <button disabled={saving} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">{saving ? "Adding..." : "Add activity"}</button>
-      </form>
-
-      <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold">Timeline</h2>
-        {activities.length === 0 ? <p className="text-sm text-slate-500">No activity yet.</p> : null}
-        {activities.map((act) => (
-          <article key={act._id} className="rounded-lg border border-slate-200 p-3">
-            <div className="flex items-center justify-between text-sm">
-              <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium uppercase text-slate-700">{act.type}</span>
-              <span className="text-slate-500">{new Date(act.createdAt).toLocaleString()}</span>
-            </div>
-            <p className="mt-2 text-sm text-slate-800">{act.body}</p>
-          </article>
-        ))}
-      </section>
+      <PersonEditorModal
+        open={personModalOpen}
+        form={personForm}
+        mode={editingPerson ? "edit" : "create"}
+        saving={savingPerson}
+        onClose={() => {
+          setPersonModalOpen(false);
+          setEditingPerson(null);
+          setPersonForm(EMPTY_PERSON_FORM);
+        }}
+        onChange={(patch) => setPersonForm((current) => ({ ...current, ...patch }))}
+        onSubmit={savePerson}
+      />
     </main>
   );
 }
 
-function Input({ label, value, onChange, required, type = "text" }: { label: string; value: string; onChange: (v: string) => void; required?: boolean; type?: string; }) {
+function InfoTile({ label, value, icon: Icon }: { label: string; value: string; icon?: typeof CalendarDays }) {
   return (
-    <label className="block text-sm">
-      <span className="mb-1 block font-medium text-slate-700">{label}</span>
-      <input type={type} required={required} value={value} onChange={(e) => onChange(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2" />
-    </label>
+    <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+        {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
+        {label}
+      </div>
+      <p className="mt-3 text-sm font-medium text-slate-800">{value}</p>
+    </div>
   );
 }
 
-function Select({ label, value, options, onChange }: { label: string; value: string; options: readonly string[]; onChange: (v: string) => void; }) {
+function StackedInfo({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
   return (
-    <label className="block text-sm">
-      <span className="mb-1 block font-medium text-slate-700">{label}</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
-        {options.map((opt) => <option key={opt || "all"} value={opt}>{opt || "All"}</option>)}
-      </select>
-    </label>
+    <div className={`rounded-[24px] border p-4 ${accent ? "border-dashed border-slate-300 bg-slate-50/60" : "border-slate-200 bg-slate-50"}`}>
+      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</div>
+      <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700">{value}</p>
+    </div>
+  );
+}
+
+function InlineLink({ href, label, icon: Icon }: { href: string; label: string; icon: typeof Globe }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-950"
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </a>
   );
 }
