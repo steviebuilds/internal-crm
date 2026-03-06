@@ -44,6 +44,8 @@ function buildCompanyQuery(filters: CompanyFilters) {
       { phones: search },
       { notes: search },
       { website: search },
+      { instagramHandle: search },
+      { instagramUrl: search },
       { assignedTo: search },
     ];
   }

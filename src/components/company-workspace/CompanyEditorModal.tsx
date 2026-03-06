@@ -11,6 +11,9 @@ export function CompanyEditorModal({
   onClose,
   onChange,
   onSubmit,
+  title = "Edit business",
+  description = "Update the core record without cluttering the main workspace.",
+  submitLabel = "Save business",
 }: {
   open: boolean;
   form: CompanyForm | null;
@@ -18,6 +21,9 @@ export function CompanyEditorModal({
   onClose: () => void;
   onChange: (patch: Partial<CompanyForm>) => void;
   onSubmit: (event: React.FormEvent) => void;
+  title?: string;
+  description?: string;
+  submitLabel?: string;
 }) {
   if (!form) return null;
 
@@ -25,8 +31,8 @@ export function CompanyEditorModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Edit business"
-      description="Update the core record without cluttering the main workspace."
+      title={title}
+      description={description}
       footer={
         <div className="flex items-center justify-end gap-3">
           <button
@@ -42,7 +48,7 @@ export function CompanyEditorModal({
             disabled={saving}
             className="cursor-pointer rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
           >
-            {saving ? "Saving..." : "Save business"}
+            {saving ? "Saving..." : submitLabel}
           </button>
         </div>
       }

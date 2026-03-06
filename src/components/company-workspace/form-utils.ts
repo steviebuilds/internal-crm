@@ -22,6 +22,28 @@ export type CompanyForm = {
   nextFollowUpAt: string;
 };
 
+export const EMPTY_COMPANY_FORM: CompanyForm = {
+  name: "",
+  website: "",
+  industry: "",
+  emails: "",
+  phones: "",
+  assignedTo: "",
+  instagramHandle: "",
+  instagramUrl: "",
+  facebookUrl: "",
+  linkedinUrl: "",
+  xUrl: "",
+  tiktokUrl: "",
+  youtubeUrl: "",
+  source: "Website",
+  status: "New",
+  priority: "Medium",
+  tags: "",
+  notes: "",
+  nextFollowUpAt: "",
+};
+
 export type PersonForm = {
   fullName: string;
   role: string;
