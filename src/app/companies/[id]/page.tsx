@@ -266,9 +266,6 @@ export default function CompanyPage() {
                   {company ? <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">Priority {company.priority}</span> : null}
                 </div>
                 <h1 className="text-3xl font-semibold tracking-tight text-slate-950">{company?.name || "Company workspace"}</h1>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                  The essentials stay visible here. Editing happens in focused modals so this page reads like a workspace instead of a spreadsheet.
-                </p>
               </div>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -294,7 +291,6 @@ export default function CompanyPage() {
           <section className="rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-lg font-semibold tracking-tight text-slate-950">Business snapshot</h2>
-              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Live record</span>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <InfoTile label="Industry" value={company?.industry || "Not set"} />
@@ -331,7 +327,6 @@ export default function CompanyPage() {
           <section className="rounded-[28px] border border-white/70 bg-white/95 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.06)]">
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-lg font-semibold tracking-tight text-slate-950">Record details</h2>
-              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Quick scan</span>
             </div>
             <div className="space-y-4">
               <StackedInfo label="Address" value={company?.addresses?.join("\n") || "No address saved"} />
@@ -345,7 +340,6 @@ export default function CompanyPage() {
           <div className="mb-5 flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold tracking-tight text-slate-950">Contacts</h2>
-              <p className="mt-1 text-sm text-slate-500">Keep the list clean here. Edit or add contacts without burying the page in forms.</p>
             </div>
             <button
               type="button"
@@ -416,7 +410,6 @@ export default function CompanyPage() {
               </div>
               <div>
                 <h2 className="text-lg font-semibold tracking-tight text-slate-950">Add note</h2>
-                <p className="text-sm text-slate-500">One clean entry. No extra category noise.</p>
               </div>
             </div>
             <textarea

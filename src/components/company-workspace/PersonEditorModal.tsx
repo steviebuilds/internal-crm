@@ -25,7 +25,6 @@ export function PersonEditorModal({
       open={open}
       onClose={onClose}
       title={mode === "create" ? "Add contact" : "Edit contact"}
-      description="Keep contacts lightweight on the page and edit them in one place."
       footer={
         <div className="flex items-center justify-end gap-3">
           <button

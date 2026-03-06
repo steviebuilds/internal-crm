@@ -20,7 +20,7 @@ import {
 import { CompanyEditorModal } from "@/components/company-workspace/CompanyEditorModal";
 import { CompanyForm, EMPTY_COMPANY_FORM, parseCsv } from "@/components/company-workspace/form-utils";
 import { COMPANY_PRIORITIES, COMPANY_STATUSES } from "@/lib/constants";
-import { Company } from "@/lib/types";
+import { Company, CompanyPriority } from "@/lib/types";
 
 type CompanyRow = Company & {
   primaryContact?: { fullName?: string; emails?: string[]; phones?: string[] } | null;
@@ -46,21 +46,6 @@ type DashboardQuery = {
   page: number;
   pageSize: number;
 };
-
-function statusTone(status: string) {
-  if (status === "Won") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  if (status === "Lost") return "border-rose-200 bg-rose-50 text-rose-700";
-  if (status === "Interested") return "border-indigo-200 bg-indigo-50 text-indigo-700";
-  if (status === "Demo Sent") return "border-amber-200 bg-amber-50 text-amber-700";
-  if (status === "Contacted") return "border-cyan-200 bg-cyan-50 text-cyan-700";
-  return "border-slate-200 bg-slate-100 text-slate-700";
-}
-
-function priorityTone(priority: string) {
-  if (priority === "High") return "border-rose-200 bg-rose-50 text-rose-700";
-  if (priority === "Low") return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  return "border-amber-200 bg-amber-50 text-amber-700";
-}
 
 function formatDate(value?: string | null) {
   if (!value) return "Not set";
@@ -246,6 +231,23 @@ export default function HomePage() {
     await loadDashboard({ q: debouncedQuery, status: statusFilter, priority: priorityFilter, page, pageSize });
   }
 
+  async function updatePriority(id: string, priority: CompanyPriority) {
+    const res = await fetch(`/api/companies/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ priority }),
+    });
+
+    if (!res.ok) {
+      setError("Failed to update priority");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    await loadDashboard({ q: debouncedQuery, status: statusFilter, priority: priorityFilter, page, pageSize });
+  }
+
   async function followUpAction(companyId: string, action: "done" | "snooze" | "reschedule") {
     const body: { companyId: string; action: string; until?: string | null } = { companyId, action };
     if (action === "reschedule") {
@@ -294,7 +296,6 @@ export default function HomePage() {
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-indigo-500">Wahlu CRM</p>
             <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">Company command centre</h1>
-            <p className="mt-1 max-w-2xl text-sm text-slate-600">Keep the list tight, move fast, and jump into the right company without fighting the interface.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -328,7 +329,6 @@ export default function HomePage() {
             <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-slate-950">Companies</h2>
-                <p className="mt-1 text-sm text-slate-500">Search updates automatically. Filters apply the moment they change.</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <SummaryChip icon={<Building2 size={14} />} label="Companies" value={total} tone="slate" />
@@ -421,15 +421,16 @@ export default function HomePage() {
                   <th className="px-4 py-3">Links</th>
                   <th className="px-4 py-3">Primary contact</th>
                   <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Priority</th>
                   <th className="px-4 py-3">Next touch</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-200">
                 {loading ? (
                   Array.from({ length: 8 }).map((_, index) => (
-                    <tr key={`loading-${index}`} className="border-b border-slate-100">
-                      <td colSpan={6} className="px-4 py-4">
+                    <tr key={`loading-${index}`} className="align-top">
+                      <td colSpan={7} className="px-4 py-4">
                         <div className="space-y-2">
                           <div className="h-4 w-44 animate-pulse rounded-full bg-slate-100" />
                           <div className="h-4 w-28 animate-pulse rounded-full bg-slate-100" />
@@ -439,7 +440,7 @@ export default function HomePage() {
                   ))
                 ) : companies.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-16">
+                    <td colSpan={7} className="px-4 py-16">
                       <div className="mx-auto max-w-md text-center">
                         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-slate-400">
                           <Building2 size={18} />
@@ -479,7 +480,7 @@ export default function HomePage() {
                     const siteHref = ensureUrl(company.website);
 
                     return (
-                      <tr key={company._id} className="border-b border-slate-100 align-top transition hover:bg-slate-50/90">
+                      <tr key={company._id} className="align-top transition hover:bg-slate-50/90">
                         <td className="px-4 py-4">
                           <div className="font-semibold text-slate-950">{company.name}</div>
                           <div className="mt-1 text-xs text-slate-500">{company.industry || "No industry yet"}</div>
@@ -519,10 +520,19 @@ export default function HomePage() {
                               </option>
                             ))}
                           </select>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${statusTone(company.status)}`}>{company.status}</span>
-                            <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${priorityTone(company.priority)}`}>{company.priority} priority</span>
-                          </div>
+                        </td>
+                        <td className="px-4 py-4">
+                          <select
+                            className="w-full cursor-pointer rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800 outline-none transition focus:border-slate-400"
+                            value={company.priority}
+                            onChange={(event) => updatePriority(company._id, event.target.value as CompanyPriority)}
+                          >
+                            {COMPANY_PRIORITIES.map((priority) => (
+                              <option key={priority} value={priority}>
+                                {priority}
+                              </option>
+                            ))}
+                          </select>
                         </td>
                         <td className="px-4 py-4 text-xs text-slate-500">
                           <div>
@@ -622,7 +632,6 @@ export default function HomePage() {
         onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
         onSubmit={createCompany}
         title="Add company"
-        description="Capture the essentials without stealing space from the main list. Everything else can be refined later."
         submitLabel="Create company"
       />
     </main>
@@ -677,7 +686,6 @@ function FollowUpPanel({
       <div className="flex items-center justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-          <p className="text-xs text-slate-500">Quick actions for the next companies to touch.</p>
         </div>
         <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">{items.length}</span>
       </div>

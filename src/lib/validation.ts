@@ -66,6 +66,8 @@ export const activityInputSchema = z.object({
   body: z.string().min(1).max(1500),
 });
 
+export const activityPatchSchema = activityInputSchema.partial();
+
 export const followUpActionSchema = z.object({
   companyId: z.string().min(1),
   action: z.enum(["done", "snooze", "reschedule"]),

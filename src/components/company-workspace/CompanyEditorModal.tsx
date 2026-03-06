@@ -12,7 +12,7 @@ export function CompanyEditorModal({
   onChange,
   onSubmit,
   title = "Edit business",
-  description = "Update the core record without cluttering the main workspace.",
+  description,
   submitLabel = "Save business",
 }: {
   open: boolean;
